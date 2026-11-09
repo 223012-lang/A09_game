@@ -1,0 +1,584 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>だるまさんがころんだ</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700&display=swap');
+
+        body {
+            margin: 0;
+            overflow: hidden;
+            background-color: #87CEEB; /* 空色 */
+            touch-action: none; /* スマホでのスクロール無効化 */
+            font-family: 'M PLUS Rounded 1c', sans-serif;
+            user-select: none;
+        }
+
+        #game-container {
+            position: relative;
+            width: 100vw;
+            height: 100dvh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        #canvas-container {
+            flex-grow: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        canvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+
+        /* 鬼のセリフ用吹き出し */
+        #speech-bubble {
+            position: absolute;
+            top: 15%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: white;
+            border-radius: 20px;
+            padding: 10px 20px;
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+            border: 4px solid #333;
+            display: none;
+            z-index: 10;
+            white-space: nowrap;
+        }
+
+        #speech-bubble::after {
+            content: '';
+            position: absolute;
+            bottom: -15px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 15px 15px 0;
+            border-style: solid;
+            border-color: #333 transparent transparent transparent;
+            display: block;
+            width: 0;
+        }
+        
+        #speech-bubble::before {
+            content: '';
+            position: absolute;
+            bottom: -10px;
+            left: 50%;
+            transform: translateX(-50%);
+            border-width: 11px 11px 0;
+            border-style: solid;
+            border-color: #fff transparent transparent transparent;
+            display: block;
+            width: 0;
+            z-index: 1;
+        }
+
+        /* コントロールエリア */
+        #controls {
+            height: 150px;
+            background: linear-gradient(to bottom, #4ade80, #22c55e); /* 草原風 */
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            box-shadow: 0 -4px 10px rgba(0,0,0,0.2);
+            position: relative;
+            z-index: 20;
+            border-top: 4px solid #15803d;
+        }
+
+        #move-btn {
+            width: 80%;
+            max-width: 400px;
+            height: 80px;
+            background-color: #ef4444;
+            border: 4px solid #b91c1c;
+            border-radius: 40px;
+            font-size: 28px;
+            color: white;
+            font-weight: bold;
+            box-shadow: 0 8px 0 #b91c1c, 0 15px 20px rgba(0,0,0,0.4);
+            transition: all 0.1s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        #move-btn:active, #move-btn.active {
+            transform: translateY(8px);
+            box-shadow: 0 0px 0 #b91c1c, 0 5px 10px rgba(0,0,0,0.4);
+            background-color: #dc2626;
+        }
+
+        /* 警告エフェクト */
+        #warning-flash {
+            position: absolute;
+            inset: 0;
+            background-color: rgba(239, 68, 68, 0.3);
+            pointer-events: none;
+            opacity: 0;
+            z-index: 15;
+            transition: opacity 0.2s;
+        }
+
+        /* オーバーレイ（スタート・結果） */
+        #overlay {
+            position: absolute;
+            inset: 0;
+            background: rgba(0,0,0,0.7);
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            pointer-events: auto;
+            z-index: 50;
+        }
+
+        .title-text {
+            text-shadow: 2px 2px 0 #000, -2px -2px 0 #000, 2px -2px 0 #000, -2px 2px 0 #000, 4px 4px 0px rgba(0,0,0,0.5);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="game-container">
+        <!-- ゲーム描画エリア -->
+        <div id="canvas-container">
+            <canvas id="gameCanvas"></canvas>
+            <div id="speech-bubble">だるまさんがころんだ</div>
+            <div id="warning-flash"></div>
+        </div>
+
+        <!-- 進行度バー -->
+        <div class="w-full bg-gray-800 h-4 relative z-20">
+            <div id="progress-bar" class="bg-yellow-400 h-full w-0 transition-all duration-100 rounded-r-full"></div>
+            <div class="absolute right-0 top-0 text-xs text-white px-2 -mt-1 font-bold">GOAL</div>
+        </div>
+
+        <!-- 操作エリア -->
+        <div id="controls">
+            <div id="move-btn">
+                <span>長押しで進む！ 🏃</span>
+            </div>
+        </div>
+
+        <!-- スタート/結果画面 -->
+        <div id="overlay">
+            <h1 class="text-4xl md:text-6xl text-white title-text mb-4 text-center leading-tight" id="titleText">だるまさんが<br>ころんだ</h1>
+            
+            <div class="bg-white/90 p-6 rounded-2xl max-w-sm w-11/12 text-center shadow-xl border-4 border-gray-800 mb-8" id="rules">
+                <p class="text-gray-800 text-lg font-bold mb-2">【あそびかた】</p>
+                <p class="text-gray-600 mb-2">下のボタンを<span class="text-red-500 font-bold">押している間</span>進みます。</p>
+                <p class="text-gray-600 mb-2">鬼が<span class="text-red-500 font-bold">前を向いている時</span>に動くとゲームオーバー！</p>
+                <p class="text-gray-600">鬼にタッチ（ゴール）すればクリア！</p>
+            </div>
+
+            <button id="startBtn" class="bg-yellow-400 hover:bg-yellow-300 text-gray-900 font-bold py-4 px-12 rounded-full text-2xl border-4 border-gray-900 shadow-[0_6px_0_#111827] transition transform hover:scale-105 active:translate-y-2 active:shadow-none">
+                スタート！
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ==========================================
+        // ゲーム状態と定数
+        // ==========================================
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+
+        const STATE = {
+            MENU: 0,
+            PLAYING: 1,
+            GAMEOVER: 2,
+            CLEAR: 3
+        };
+        let gameState = STATE.MENU;
+
+        // プレイヤー情報
+        const PLAYER = {
+            progress: 0, // 0 ~ 100
+            speed: 12, // 1秒間に進む量 (画面の%)
+            isMoving: false,
+            emoji: '🏃',
+            size: 60
+        };
+
+        // 鬼の情報
+        const ONI = {
+            state: 'IDLE', // IDLE, CHANTING (後ろ向き), LOOKING (前向き)
+            chantText: "だ・る・ま・さ・ん・が・こ・ろ・ん・だ",
+            chantIndex: 0,
+            chantTimer: 0,
+            lookTimer: 0,
+            baseFace: '🤖', // 前向き
+            backFace: '🎛️', // 後ろ向き（適当な背面っぽい絵文字）
+            size: 100,
+            x: 0, y: 0,
+            shake: 0
+        };
+
+        // 演出用
+        let particles = [];
+        let lastTime = 0;
+
+        // UI要素
+        const ui = {
+            speechBubble: document.getElementById('speech-bubble'),
+            warningFlash: document.getElementById('warning-flash'),
+            progressBar: document.getElementById('progress-bar'),
+            overlay: document.getElementById('overlay'),
+            titleText: document.getElementById('titleText'),
+            startBtn: document.getElementById('startBtn'),
+            moveBtn: document.getElementById('move-btn'),
+            rules: document.getElementById('rules')
+        };
+
+        // ==========================================
+        // リサイズ処理
+        // ==========================================
+        function resize() {
+            const container = document.getElementById('canvas-container');
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            
+            // 鬼の位置設定 (上部中央)
+            ONI.x = canvas.width / 2;
+            ONI.y = canvas.height * 0.25;
+            
+            // プレイヤーのサイズを画面に応じて調整
+            PLAYER.size = Math.min(canvas.width, canvas.height) * 0.15;
+            ONI.size = Math.min(canvas.width, canvas.height) * 0.25;
+        }
+        window.addEventListener('resize', resize);
+
+        // ==========================================
+        // ロジック更新
+        // ==========================================
+        function update(dt) {
+            if (gameState !== STATE.PLAYING) return;
+
+            // --- プレイヤーの移動処理 ---
+            if (PLAYER.isMoving) {
+                PLAYER.progress += (PLAYER.speed * dt);
+                
+                // 動いている時の土煙パーティクル
+                if (Math.random() < 0.3) {
+                    createParticle(
+                        canvas.width/2 + (Math.random()-0.5)*PLAYER.size, 
+                        getPlayerY() + PLAYER.size/2
+                    );
+                }
+
+                // ゴール判定 (鬼にタッチ: 95%以上)
+                if (PLAYER.progress >= 95) {
+                    gameClear();
+                    return;
+                }
+
+                // 動いている時に鬼がこっちを見ていたらアウト
+                if (ONI.state === 'LOOKING') {
+                    gameOver();
+                    return;
+                }
+            }
+
+            ui.progressBar.style.width = `${PLAYER.progress}%`;
+
+            // --- 鬼のロジック ---
+            if (ONI.state === 'CHANTING') {
+                ONI.chantTimer -= dt;
+                
+                // 文字を進める
+                if (ONI.chantTimer <= 0) {
+                    const chantArray = ONI.chantText.split('・');
+                    ONI.chantIndex++;
+                    
+                    if (ONI.chantIndex <= chantArray.length) {
+                        ui.speechBubble.innerText = chantArray.slice(0, ONI.chantIndex).join('');
+                        
+                        // 次の文字までの時間（ランダム性を持たせてフェイント）
+                        // 最後の方（ろんだ）は早くなるかも
+                        let nextTime = 0.2 + Math.random() * 0.3; 
+                        if (ONI.chantIndex > 6) {
+                            nextTime = 0.1 + Math.random() * 0.4;
+                        }
+                        ONI.chantTimer = nextTime;
+                        
+                        // 鬼を少し揺らす
+                        ONI.shake = 5;
+                    } else {
+                        // 唱え終わった -> 振り向く！
+                        ONI.state = 'LOOKING';
+                        // 振り向いている時間 (1秒〜3秒)
+                        ONI.lookTimer = 1.0 + Math.random() * 2.0; 
+                        ui.speechBubble.style.display = 'none';
+                        ui.warningFlash.style.opacity = 1; // 画面を一瞬赤く
+                        
+                        // 少し後にフラッシュを消す
+                        setTimeout(() => { ui.warningFlash.style.opacity = 0; }, 300);
+                    }
+                }
+            } else if (ONI.state === 'LOOKING') {
+                ONI.lookTimer -= dt;
+                if (ONI.lookTimer <= 0) {
+                    // 再び後ろを向く
+                    ONI.state = 'CHANTING';
+                    ONI.chantIndex = 0;
+                    ONI.chantTimer = 0.5; // 次歌い始めるまでのタメ
+                    ui.speechBubble.innerText = "…";
+                    ui.speechBubble.style.display = 'block';
+                }
+            }
+
+            // パーティクル更新
+            updateParticles(dt);
+        }
+
+        // ==========================================
+        // 描画処理
+        // ==========================================
+        function getPlayerY() {
+            // progress (0-100) に応じてY座標を下から上へ計算
+            const startY = canvas.height * 0.85;
+            const endY = ONI.y + ONI.size/2;
+            return startY - ((startY - endY) * (PLAYER.progress / 100));
+        }
+
+        function getPlayerScale() {
+            // 遠く（奥）に行くほど小さくなる
+            return 1.0 - (PLAYER.progress / 100) * 0.5;
+        }
+
+        function draw() {
+            // 背景クリア（空と地面）
+            ctx.fillStyle = '#87CEEB';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            ctx.fillStyle = '#fef08a'; // 地面の色
+            const groundY = canvas.height * 0.3;
+            ctx.fillRect(0, groundY, canvas.width, canvas.height - groundY);
+
+            // 地平線の線
+            ctx.strokeStyle = '#eab308';
+            ctx.lineWidth = 4;
+            ctx.beginPath();
+            ctx.moveTo(0, groundY);
+            ctx.lineTo(canvas.width, groundY);
+            ctx.stroke();
+
+            // --- 鬼の描画 ---
+            ctx.save();
+            let drawX = ONI.x;
+            let drawY = ONI.y;
+            
+            // 揺れエフェクト
+            if (ONI.shake > 0) {
+                drawX += (Math.random() - 0.5) * ONI.shake;
+                drawY += (Math.random() - 0.5) * ONI.shake;
+                ONI.shake *= 0.8;
+                if(ONI.shake < 0.5) ONI.shake = 0;
+            }
+
+            ctx.translate(drawX, drawY);
+            ctx.font = `${ONI.size}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            
+            // 状態によって顔を変える
+            if (gameState === STATE.GAMEOVER) {
+                ctx.fillText('😈', 0, 0); // 捕まった時
+            } else if (ONI.state === 'LOOKING') {
+                ctx.fillText(ONI.baseFace, 0, 0); // 前向き
+            } else {
+                ctx.fillText(ONI.backFace, 0, 0); // 後ろ向き
+            }
+            ctx.restore();
+
+            // --- パーティクル描画 (プレイヤーの後ろ) ---
+            drawParticles();
+
+            // --- プレイヤーの描画 ---
+            if (gameState !== STATE.GAMEOVER || (gameState === STATE.GAMEOVER && Math.floor(Date.now() / 200) % 2 === 0)) {
+                // ゲームオーバー時は点滅させる
+                ctx.save();
+                const pY = getPlayerY();
+                const scale = getPlayerScale();
+                
+                ctx.translate(canvas.width / 2, pY);
+                
+                // 動いている時は少し揺らす
+                if (PLAYER.isMoving && gameState === STATE.PLAYING) {
+                    ctx.rotate(Math.sin(Date.now() / 50) * 0.1);
+                    ctx.translate(0, -Math.abs(Math.sin(Date.now() / 50) * 10)); // ぴょんぴょん
+                }
+                
+                ctx.scale(scale, scale);
+                ctx.font = `${PLAYER.size}px Arial`;
+                ctx.textAlign = 'center';
+                ctx.textBaseline = 'middle';
+                
+                const currentEmoji = gameState === STATE.GAMEOVER ? '😱' : (gameState === STATE.CLEAR ? '🎉' : PLAYER.emoji);
+                ctx.fillText(currentEmoji, 0, 0);
+                
+                ctx.restore();
+            }
+        }
+
+        // ==========================================
+        // エフェクト（土煙）
+        // ==========================================
+        function createParticle(x, y) {
+            particles.push({
+                x: x,
+                y: y,
+                vx: (Math.random() - 0.5) * 20,
+                vy: (Math.random() - 0.5) * 20,
+                life: 1.0,
+                size: 5 + Math.random() * 10
+            });
+        }
+
+        function updateParticles(dt) {
+            for (let i = particles.length - 1; i >= 0; i--) {
+                const p = particles[i];
+                p.x += p.vx * dt;
+                p.y += p.vy * dt;
+                p.life -= dt * 2.0;
+                if (p.life <= 0) particles.splice(i, 1);
+            }
+        }
+
+        function drawParticles() {
+            ctx.save();
+            for (const p of particles) {
+                ctx.globalAlpha = p.life;
+                ctx.fillStyle = '#d4d4d8'; // 埃の色
+                ctx.beginPath();
+                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            ctx.restore();
+        }
+
+        // ==========================================
+        // ゲーム制御
+        // ==========================================
+        function startGame() {
+            gameState = STATE.PLAYING;
+            PLAYER.progress = 0;
+            PLAYER.isMoving = false;
+            
+            ONI.state = 'CHANTING';
+            ONI.chantIndex = 0;
+            ONI.chantTimer = 1.0; // 最初のセリフまでの間
+            
+            particles = [];
+            
+            ui.overlay.style.display = 'none';
+            ui.speechBubble.style.display = 'block';
+            ui.speechBubble.innerText = "…";
+            ui.progressBar.style.width = '0%';
+            
+            lastTime = performance.now();
+            requestAnimationFrame(gameLoop);
+        }
+
+        function gameOver() {
+            gameState = STATE.GAMEOVER;
+            PLAYER.isMoving = false;
+            ui.moveBtn.classList.remove('active');
+            
+            ui.speechBubble.innerText = "みーつーけた！！";
+            ui.speechBubble.style.color = '#dc2626';
+            
+            setTimeout(() => {
+                ui.overlay.style.display = 'flex';
+                ui.titleText.innerHTML = "見つかった！<br><span class='text-red-500'>GAME OVER</span>";
+                ui.rules.style.display = 'none';
+                ui.startBtn.innerText = "もういちど遊ぶ";
+                ui.speechBubble.style.display = 'none';
+                ui.speechBubble.style.color = '#333';
+            }, 1500);
+        }
+
+        function gameClear() {
+            gameState = STATE.CLEAR;
+            PLAYER.isMoving = false;
+            ui.moveBtn.classList.remove('active');
+            
+            ui.speechBubble.innerText = "タッチされた！";
+            
+            setTimeout(() => {
+                ui.overlay.style.display = 'flex';
+                ui.titleText.innerHTML = "クリア！<br><span class='text-yellow-400'>おめでとう！🎉</span>";
+                ui.rules.style.display = 'none';
+                ui.startBtn.innerText = "もういちど遊ぶ";
+                ui.speechBubble.style.display = 'none';
+            }, 1500);
+        }
+
+        function gameLoop(timestamp) {
+            const dt = (timestamp - lastTime) / 1000; // 秒に変換
+            lastTime = timestamp;
+
+            // タブが裏にいった時などの異常なdtを防ぐ
+            if (dt < 0.1) {
+                update(dt);
+            }
+            draw();
+
+            if (gameState === STATE.PLAYING || gameState === STATE.GAMEOVER || gameState === STATE.CLEAR) {
+                requestAnimationFrame(gameLoop);
+            }
+        }
+
+        // ==========================================
+        // 入力イベント (ボタン長押し)
+        // ==========================================
+        const handleDown = (e) => {
+            if (e.type !== 'mousedown' || e.button === 0) { // 左クリックまたはタッチ
+                e.preventDefault();
+                if (gameState === STATE.PLAYING) {
+                    PLAYER.isMoving = true;
+                    ui.moveBtn.classList.add('active');
+                }
+            }
+        };
+
+        const handleUp = (e) => {
+            e.preventDefault();
+            PLAYER.isMoving = false;
+            ui.moveBtn.classList.remove('active');
+        };
+
+        ui.moveBtn.addEventListener('mousedown', handleDown);
+        ui.moveBtn.addEventListener('touchstart', handleDown, {passive: false});
+        
+        // 画面のどこで離しても止まるようにする
+        window.addEventListener('mouseup', handleUp);
+        window.addEventListener('touchend', handleUp, {passive: false});
+        // スマホでボタン外にスワイプした時に離した扱いにするため
+        window.addEventListener('touchcancel', handleUp);
+
+        ui.startBtn.addEventListener('click', startGame);
+
+        // ==========================================
+        // 初期化
+        // ==========================================
+        resize();
+        draw(); // 初期画面の描画
+    </script>
+</body>
+</html>
