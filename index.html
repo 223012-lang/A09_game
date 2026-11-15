@@ -232,6 +232,7 @@
         // 演出用
         let particles = [];
         let lastTime = 0;
+        let animationId = null;
 
         // UI要素
         const ui = {
@@ -271,6 +272,11 @@
 
             // --- プレイヤーの移動処理 ---
             if (PLAYER.isMoving) {
+                // ゴール直前も、前を向いている鬼に動きを見られたらアウト
+                if (ONI.state === 'LOOKING') {
+                    gameOver();
+                    return;
+                }
                 PLAYER.progress += (PLAYER.speed * dt);
                 
                 // 動いている時の土煙パーティクル
@@ -287,11 +293,6 @@
                     return;
                 }
 
-                // 動いている時に鬼がこっちを見ていたらアウト
-                if (ONI.state === 'LOOKING') {
-                    gameOver();
-                    return;
-                }
             }
 
             ui.progressBar.style.width = `${PLAYER.progress}%`;
@@ -492,7 +493,8 @@
             ui.progressBar.style.width = '0%';
             
             lastTime = performance.now();
-            requestAnimationFrame(gameLoop);
+            cancelAnimationFrame(animationId);
+            animationId = requestAnimationFrame(gameLoop);
         }
 
         function gameOver() {
@@ -540,7 +542,7 @@
             draw();
 
             if (gameState === STATE.PLAYING || gameState === STATE.GAMEOVER || gameState === STATE.CLEAR) {
-                requestAnimationFrame(gameLoop);
+                animationId = requestAnimationFrame(gameLoop);
             }
         }
 
